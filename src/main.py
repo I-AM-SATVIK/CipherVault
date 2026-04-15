@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-from tkinter import ttk
+from tkinter import ttk # Importing Themed Tkinter for modern UI
 import secrets
 import string
 import json
@@ -65,44 +65,52 @@ class PasswordManager:
         return False
 
     def generate_password(self, length=24):
-        """Generates a cryptographically secure password."""
         alphabet = string.ascii_letters + string.digits + string.punctuation
-        
         while True:
             password = ''.join(secrets.choice(alphabet) for _ in range(length))
-            
-            # Enforce strict complexity constraints
             if (any(c.islower() for c in password) and
                 any(c.isupper() for c in password) and
                 sum(c.isdigit() for c in password) >= 2 and
                 sum(c in string.punctuation for c in password) >= 2):
                 return password
+
 # --- GUI LOGIC ---
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Cipher Vault")
-        # Increased window size for better visibility
-        self.geometry("500x400")
+        self.geometry("550x500")
         self.manager = PasswordManager()
 
-        # Apply a slightly more modern font standard
+        # Apply standard UI styling
         self.option_add("*Font", "SegoeUI 10")
+        style = ttk.Style(self)
+        style.theme_use('clam') # 'clam', 'vista', or 'winnative' provide cleaner looks
 
         self.build_login_screen()
 
     def build_login_screen(self):
         self.clear_window()
         
-        tk.Label(self, text="Cipher Vault", font=("SegoeUI", 20, "bold")).pack(pady=30)
+        ttk.Label(self, text="🔒 Cipher Vault", font=("SegoeUI", 24, "bold")).pack(pady=(40, 10))
         
-        status_text = "Enter Master Password:" if os.path.exists(DATA_FILE) else "Create a Master Password:"
-        tk.Label(self, text=status_text).pack(pady=5)
+        status_text = "Enter Master Password to Unlock:" if os.path.exists(DATA_FILE) else "Create a New Master Password:"
+        ttk.Label(self, text=status_text).pack(pady=5)
         
-        self.master_pwd_entry = tk.Entry(self, show="*", width=35)
+        self.master_pwd_entry = ttk.Entry(self, show="*", width=35, font=("SegoeUI", 12))
         self.master_pwd_entry.pack(pady=5)
+
+        # Show/Hide Password Toggle
+        self.show_pwd_var = tk.BooleanVar()
+        ttk.Checkbutton(self, text="Show Password", variable=self.show_pwd_var, command=self.toggle_login_visibility).pack(pady=5)
         
-        tk.Button(self, text="Login / Setup", width=15, command=self.attempt_login).pack(pady=15)
+        ttk.Button(self, text="Login", command=self.attempt_login).pack(pady=20)
+
+    def toggle_login_visibility(self):
+        if self.show_pwd_var.get():
+            self.master_pwd_entry.config(show="")
+        else:
+            self.master_pwd_entry.config(show="*")
 
     def attempt_login(self):
         pwd = self.master_pwd_entry.get()
@@ -113,50 +121,51 @@ class App(tk.Tk):
         if self.manager.load_passwords(pwd):
             self.build_main_screen()
         else:
-            messagebox.showerror("Error", "Incorrect Master Password!")
+            messagebox.showerror("Access Denied", "Incorrect Master Password!")
 
     def build_main_screen(self):
         self.clear_window()
 
-        # Create a centered frame for inputs
-        frame = tk.Frame(self)
-        frame.pack(pady=30)
+        # Dashboard Header
+        ttk.Label(self, text="🔒 Cipher Vault Dashboard", font=("SegoeUI", 18, "bold")).pack(pady=(20, 10))
 
-        tk.Label(frame, text="Website/App Name:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
-        self.site_entry = tk.Entry(frame, width=35)
-        self.site_entry.grid(row=0, column=1, padx=10, pady=10)
+        # Visually Grouped Input Area
+        input_frame = ttk.LabelFrame(self, text=" Save New Credential ", padding=(20, 10))
+        input_frame.pack(pady=10, fill="x", padx=40)
 
-        tk.Label(frame, text="Username/Email:").grid(row=1, column=0, padx=10, pady=10, sticky="e")
-        self.user_entry = tk.Entry(frame, width=35)
-        self.user_entry.grid(row=1, column=1, padx=10, pady=10)
+        ttk.Label(input_frame, text="Website / App:").grid(row=0, column=0, padx=5, pady=10, sticky="e")
+        self.site_entry = ttk.Entry(input_frame, width=35)
+        self.site_entry.grid(row=0, column=1, padx=5, pady=10)
 
-        tk.Label(frame, text="Password:").grid(row=2, column=0, padx=10, pady=10, sticky="e")
-        self.pwd_entry = tk.Entry(frame, width=35)
-        self.pwd_entry.grid(row=2, column=1, padx=10, pady=10)
+        ttk.Label(input_frame, text="Username / Email:").grid(row=1, column=0, padx=5, pady=10, sticky="e")
+        self.user_entry = ttk.Entry(input_frame, width=35)
+        self.user_entry.grid(row=1, column=1, padx=5, pady=10)
 
-        # Buttons
+        ttk.Label(input_frame, text="Password:").grid(row=2, column=0, padx=5, pady=10, sticky="e")
+        self.pwd_entry = ttk.Entry(input_frame, width=35)
+        self.pwd_entry.grid(row=2, column=1, padx=5, pady=10)
+
+        # Action Buttons Area
         btn_frame = tk.Frame(self)
-        btn_frame.pack(pady=10)
+        btn_frame.pack(pady=15)
 
-        # Added the Copy button and adjusted widths to fit 3 buttons neatly
-        tk.Button(btn_frame, text="Generate", width=10, command=self.ui_generate_password).grid(row=0, column=0, padx=5)
-        tk.Button(btn_frame, text="Copy", width=10, command=self.copy_password).grid(row=0, column=1, padx=5)
-        tk.Button(btn_frame, text="Save", width=10, command=self.ui_save_password).grid(row=0, column=2, padx=5)
+        ttk.Button(btn_frame, text="⚡ Generate", command=self.ui_generate_password).grid(row=0, column=0, padx=5)
+        ttk.Button(btn_frame, text="📋 Copy", command=self.copy_password).grid(row=0, column=1, padx=5)
+        ttk.Button(btn_frame, text="💾 Save", command=self.ui_save_password).grid(row=0, column=2, padx=5)
         
-        tk.Button(self, text="View / Manage Saved Passwords", width=30, command=self.view_passwords).pack(pady=20)
+        ttk.Separator(self, orient='horizontal').pack(fill='x', padx=40, pady=10)
+        
+        ttk.Button(self, text="View & Manage Vault", command=self.view_passwords).pack(pady=10)
 
     def ui_generate_password(self):
         self.pwd_entry.delete(0, tk.END)
         new_password = self.manager.generate_password()
         self.pwd_entry.insert(0, new_password)
         
-        # Auto-copy to clipboard
         self.clipboard_clear()
         self.clipboard_append(new_password)
-        self.update() # Required on some Windows systems to push the clipboard event
-        
-        # Unobtrusive notification
-        messagebox.showinfo("Generated", "Password generated and copied to Copied!")
+        self.update()
+        messagebox.showinfo("Generated", "Strong password generated and copied to clipboard!")
 
     def copy_password(self):
         pwd = self.pwd_entry.get()
@@ -186,34 +195,30 @@ class App(tk.Tk):
 
     def view_passwords(self):
         view_window = tk.Toplevel(self)
-        view_window.title("Manage Passwords")
-        view_window.geometry("550x400")
+        view_window.title("Manage Vault")
+        view_window.geometry("600x400")
 
-        # Create a Treeview (Table) instead of a simple Listbox
         columns = ("site", "username", "password")
         tree = ttk.Treeview(view_window, columns=columns, show="headings", selectmode="browse")
         
-        tree.heading("site", text="Site/App")
+        tree.heading("site", text="Site / App")
         tree.heading("username", text="Username")
         tree.heading("password", text="Password")
         
         tree.column("site", width=150)
-        tree.column("username", width=150)
+        tree.column("username", width=200)
         tree.column("password", width=200)
 
-        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        tree.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
-        # Populate the table
         self.refresh_table(tree)
 
-        # Delete Button Logic
         def delete_selected():
             selected_item = tree.selection()
             if not selected_item:
                 messagebox.showwarning("No Selection", "Please select a password to delete.", parent=view_window)
                 return
             
-            # Get the site name from the selected row
             item_values = tree.item(selected_item[0], "values")
             site_to_delete = item_values[0]
 
@@ -223,14 +228,11 @@ class App(tk.Tk):
                 self.manager.delete_password(site_to_delete)
                 self.refresh_table(tree)
 
-        tk.Button(view_window, text="Delete Selected", bg="#ffcccc", command=delete_selected).pack(pady=10)
+        ttk.Button(view_window, text="🗑️ Delete Selected", command=delete_selected).pack(pady=10)
 
     def refresh_table(self, tree):
-        # Clear existing data
         for item in tree.get_children():
             tree.delete(item)
-            
-        # Insert fresh data
         for site, data in self.manager.passwords.items():
             tree.insert("", tk.END, values=(site, data['username'], data['password']))
 
