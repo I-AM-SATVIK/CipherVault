@@ -9,7 +9,6 @@ import base64
 import hashlib
 from cryptography.fernet import Fernet, InvalidToken
 
-# Fix blurry text on Windows High-DPI displays
 try:
     import ctypes
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -42,7 +41,32 @@ class PasswordManager:
             with open(DATA_FILE, "rb") as file:
                 encrypted_data = file.read()
             decrypted_data = self.fernet.decrypt(encrypted_data)
-            self.passwords = json.loads(decrypted_data.decode())
+            raw_data = json.loads(decrypted_data.decode())
+            
+            # --- MIGRATION LOGIC ---
+            # Automatically upgrade old vault formats to the new composite key format
+            self.passwords = {}
+            needs_save = False
+            for key, val in raw_data.items():
+                if key == "__vault_password_hash__":
+                    self.passwords[key] = val
+                else:
+                    if "actual_site" not in val:
+                        # Convert old format to new format
+                        new_key = f"{key}_{val['username']}"
+                        self.passwords[new_key] = {
+                            "actual_site": key, 
+                            "username": val["username"], 
+                            "password": val["password"]
+                        }
+                        needs_save = True
+                    else:
+                        self.passwords[key] = val
+            
+            # If old data was migrated, save the updated structure to disk immediately
+            if needs_save:
+                self.save_passwords()
+                
             return True
         except InvalidToken:
             return False
@@ -54,12 +78,14 @@ class PasswordManager:
             file.write(encrypted_data)
 
     def add_password(self, site, username, password):
-        self.passwords[site] = {"username": username, "password": password}
+        # Create a unique key to prevent overwriting accounts from the same site
+        unique_key = f"{site}_{username}"
+        self.passwords[unique_key] = {"actual_site": site, "username": username, "password": password}
         self.save_passwords()
 
-    def delete_password(self, site):
-        if site in self.passwords:
-            del self.passwords[site]
+    def delete_password(self, unique_key):
+        if unique_key in self.passwords:
+            del self.passwords[unique_key]
             self.save_passwords()
             return True
         return False
@@ -80,7 +106,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("Cipher Vault")
         self.geometry("550x500")
-        self.resizable(False, False) # Locks the window size
+        self.resizable(False, False)
         self.manager = PasswordManager()
         self.current_master_pwd = None
 
@@ -120,11 +146,9 @@ class App(tk.Tk):
 
         ttk.Label(self, text="🔒 Cipher Vault Dashboard", font=("SegoeUI", 18, "bold")).pack(pady=(20, 10))
 
-        # Visually Grouped Input Area
         input_frame = ttk.LabelFrame(self, text=" Save New Credential ", padding=(20, 10))
         input_frame.pack(pady=10, fill="x", padx=40)
 
-        # Invisible container to perfectly center the inputs
         inner_center_frame = ttk.Frame(input_frame)
         inner_center_frame.pack(expand=True)
 
@@ -140,7 +164,6 @@ class App(tk.Tk):
         self.pwd_entry = ttk.Entry(inner_center_frame, width=35)
         self.pwd_entry.grid(row=2, column=1, padx=5, pady=10)
 
-        # Buttons
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=15)
 
@@ -283,13 +306,15 @@ class App(tk.Tk):
                 messagebox.showwarning("No Selection", "Please select a password to delete.", parent=view_window)
                 return
             
-            item_values = tree.item(selected_item[0], "values")
+            # Retrieve the unique hidden key to delete the correct entry
+            unique_key = selected_item[0] 
+            item_values = tree.item(unique_key, "values")
             site_to_delete = item_values[0]
 
             confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete the password for '{site_to_delete}'?", parent=view_window)
             
             if confirm:
-                self.manager.delete_password(site_to_delete)
+                self.manager.delete_password(unique_key)
                 self.refresh_table(tree)
 
         ttk.Button(view_window, text="🗑️ Delete Selected", command=delete_selected).pack(pady=10)
@@ -297,10 +322,11 @@ class App(tk.Tk):
     def refresh_table(self, tree):
         for item in tree.get_children():
             tree.delete(item)
-        for site, data in self.manager.passwords.items():
-            if site == "__vault_password_hash__":
+        for key, data in self.manager.passwords.items():
+            if key == "__vault_password_hash__":
                 continue
-            tree.insert("", tk.END, values=(site, data['username'], data['password']))
+            # We attach the unique composite key invisibly using 'iid'
+            tree.insert("", tk.END, iid=key, values=(data['actual_site'], data['username'], data['password']))
 
     def clear_window(self):
         for widget in self.winfo_children():
