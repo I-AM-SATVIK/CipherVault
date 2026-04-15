@@ -17,5 +17,5 @@ Cipher Vault stores credentials locally using a master-password system. It avoid
 ## Installation
 1. Clone this repository:
    ```bash
-   git clone <your-repository-url>
+   git clone <https://github.com/I-AM-SATVIK/CipherVault>
    cd CipherVault
