@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
-import random
+import secrets
 import string
 import json
 import os
@@ -64,10 +64,19 @@ class PasswordManager:
             return True
         return False
 
-    def generate_password(self, length=16):
-        characters = string.ascii_letters + string.digits + string.punctuation
-        return ''.join(random.choice(characters) for _ in range(length))
-
+    def generate_password(self, length=24):
+        """Generates a cryptographically secure password."""
+        alphabet = string.ascii_letters + string.digits + string.punctuation
+        
+        while True:
+            password = ''.join(secrets.choice(alphabet) for _ in range(length))
+            
+            # Enforce strict complexity constraints
+            if (any(c.islower() for c in password) and
+                any(c.isupper() for c in password) and
+                sum(c.isdigit() for c in password) >= 2 and
+                sum(c in string.punctuation for c in password) >= 2):
+                return password
 # --- GUI LOGIC ---
 class App(tk.Tk):
     def __init__(self):
@@ -129,8 +138,10 @@ class App(tk.Tk):
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=10)
 
-        tk.Button(btn_frame, text="Generate", width=12, command=self.ui_generate_password).grid(row=0, column=0, padx=5)
-        tk.Button(btn_frame, text="Save", width=12, command=self.ui_save_password).grid(row=0, column=1, padx=5)
+        # Added the Copy button and adjusted widths to fit 3 buttons neatly
+        tk.Button(btn_frame, text="Generate", width=10, command=self.ui_generate_password).grid(row=0, column=0, padx=5)
+        tk.Button(btn_frame, text="Copy", width=10, command=self.copy_password).grid(row=0, column=1, padx=5)
+        tk.Button(btn_frame, text="Save", width=10, command=self.ui_save_password).grid(row=0, column=2, padx=5)
         
         tk.Button(self, text="View / Manage Saved Passwords", width=30, command=self.view_passwords).pack(pady=20)
 
@@ -138,6 +149,24 @@ class App(tk.Tk):
         self.pwd_entry.delete(0, tk.END)
         new_password = self.manager.generate_password()
         self.pwd_entry.insert(0, new_password)
+        
+        # Auto-copy to clipboard
+        self.clipboard_clear()
+        self.clipboard_append(new_password)
+        self.update() # Required on some Windows systems to push the clipboard event
+        
+        # Unobtrusive notification
+        messagebox.showinfo("Generated", "Password generated and copied to Copied!")
+
+    def copy_password(self):
+        pwd = self.pwd_entry.get()
+        if pwd:
+            self.clipboard_clear()
+            self.clipboard_append(pwd)
+            self.update()
+            messagebox.showinfo("Copied", "Password copied to clipboard!")
+        else:
+            messagebox.showwarning("Empty", "No password to copy.")
 
     def ui_save_password(self):
         site = self.site_entry.get().strip()
