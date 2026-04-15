@@ -1,0 +1,10 @@
+# Ignore the encrypted password database
+vault.enc
+
+# Ignore virtual environments
+venv/
+env/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
