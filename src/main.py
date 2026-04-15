@@ -344,11 +344,28 @@ class App(tk.Tk):
         tree.column("password", width=180)
         tree.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        for item in tree.get_children():
-            tree.delete(item)
-        for key, data in self.manager.passwords.items():
-            if key == "__vault_password_hash__": continue
-            tree.insert("", tk.END, iid=key, values=(data['actual_site'], data['username'], data['password']))
+        self.refresh_table(tree)
+
+        def toggle_password_visibility():
+            selected_item = tree.selection()
+            if not selected_item:
+                messagebox.showwarning("No Selection", "Please select a credential to show/hide.")
+                return
+            
+            unique_key = selected_item[0] 
+            item_values = tree.item(unique_key, "values")
+            site = item_values[0]
+            username = item_values[1]
+            displayed_password = item_values[2]
+            
+            # Retrieve the real password from the encrypted memory dictionary
+            actual_password = self.manager.passwords[unique_key]['password']
+
+            # Toggle the display value
+            if displayed_password == "********":
+                tree.item(unique_key, values=(site, username, actual_password))
+            else:
+                tree.item(unique_key, values=(site, username, "********"))
 
         def delete_selected():
             selected_item = tree.selection()
@@ -361,12 +378,22 @@ class App(tk.Tk):
             confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete the password for '{site_to_delete}'?")
             if confirm:
                 self.manager.delete_password(unique_key)
-                self.build_vault_view_screen() # Refresh screen
+                self.build_vault_view_screen() 
 
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=10)
+        
+        ttk.Button(btn_frame, text="👁️ Show / Hide", command=toggle_password_visibility).pack(side="left", padx=10)
         ttk.Button(btn_frame, text="🗑️ Delete Selected", command=delete_selected).pack(side="left", padx=10)
         ttk.Button(btn_frame, text="← Back to Dashboard", command=self.build_dashboard_screen).pack(side="left", padx=10)
+
+    def refresh_table(self, tree):
+        for item in tree.get_children():
+            tree.delete(item)
+        for key, data in self.manager.passwords.items():
+            if key == "__vault_password_hash__": continue
+            # Passwords are masked with asterisks by default during UI injection
+            tree.insert("", tk.END, iid=key, values=(data['actual_site'], data['username'], "********"))
 
     # --- SCREEN: SETTINGS ---
     def build_settings_screen(self):
