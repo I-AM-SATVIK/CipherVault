@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-from tkinter import ttk # Importing Themed Tkinter for modern UI
+from tkinter import ttk
 import secrets
 import string
 import json
@@ -9,7 +9,6 @@ import base64
 import hashlib
 from cryptography.fernet import Fernet, InvalidToken
 
-# Fix blurry text on Windows High-DPI displays
 try:
     import ctypes
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -81,11 +80,11 @@ class App(tk.Tk):
         self.title("Cipher Vault")
         self.geometry("550x500")
         self.manager = PasswordManager()
+        self.current_master_pwd = None
 
-        # Apply standard UI styling
         self.option_add("*Font", "SegoeUI 10")
         style = ttk.Style(self)
-        style.theme_use('clam') # 'clam', 'vista', or 'winnative' provide cleaner looks
+        style.theme_use('clam')
 
         self.build_login_screen()
 
@@ -99,18 +98,8 @@ class App(tk.Tk):
         
         self.master_pwd_entry = ttk.Entry(self, show="*", width=35, font=("SegoeUI", 12))
         self.master_pwd_entry.pack(pady=5)
-
-        # Show/Hide Password Toggle
-        self.show_pwd_var = tk.BooleanVar()
-        ttk.Checkbutton(self, text="Show Password", variable=self.show_pwd_var, command=self.toggle_login_visibility).pack(pady=5)
         
         ttk.Button(self, text="Login", command=self.attempt_login).pack(pady=20)
-
-    def toggle_login_visibility(self):
-        if self.show_pwd_var.get():
-            self.master_pwd_entry.config(show="")
-        else:
-            self.master_pwd_entry.config(show="*")
 
     def attempt_login(self):
         pwd = self.master_pwd_entry.get()
@@ -119,6 +108,7 @@ class App(tk.Tk):
             return
 
         if self.manager.load_passwords(pwd):
+            self.current_master_pwd = pwd
             self.build_main_screen()
         else:
             messagebox.showerror("Access Denied", "Incorrect Master Password!")
@@ -126,10 +116,8 @@ class App(tk.Tk):
     def build_main_screen(self):
         self.clear_window()
 
-        # Dashboard Header
         ttk.Label(self, text="🔒 Cipher Vault Dashboard", font=("SegoeUI", 18, "bold")).pack(pady=(20, 10))
 
-        # Visually Grouped Input Area
         input_frame = ttk.LabelFrame(self, text=" Save New Credential ", padding=(20, 10))
         input_frame.pack(pady=10, fill="x", padx=40)
 
@@ -145,7 +133,6 @@ class App(tk.Tk):
         self.pwd_entry = ttk.Entry(input_frame, width=35)
         self.pwd_entry.grid(row=2, column=1, padx=5, pady=10)
 
-        # Action Buttons Area
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=15)
 
@@ -155,7 +142,7 @@ class App(tk.Tk):
         
         ttk.Separator(self, orient='horizontal').pack(fill='x', padx=40, pady=10)
         
-        ttk.Button(self, text="View & Manage Vault", command=self.view_passwords).pack(pady=10)
+        ttk.Button(self, text="View & Manage Vault", command=self.view_passwords_auth).pack(pady=10)
 
     def ui_generate_password(self):
         self.pwd_entry.delete(0, tk.END)
@@ -186,12 +173,81 @@ class App(tk.Tk):
             messagebox.showwarning("Incomplete", "Please fill out all fields.")
             return
 
+        if site == "__vault_password_hash__":
+            messagebox.showerror("Error", "Reserved system name. Choose a different site name.")
+            return
+
         self.manager.add_password(site, user, pwd)
         messagebox.showinfo("Success", f"Credentials for {site} saved securely!")
         
         self.site_entry.delete(0, tk.END)
         self.user_entry.delete(0, tk.END)
         self.pwd_entry.delete(0, tk.END)
+
+    def view_passwords_auth(self):
+        if "__vault_password_hash__" not in self.manager.passwords:
+            self.setup_secondary_password()
+        else:
+            self.verify_secondary_password()
+
+    def setup_secondary_password(self):
+        setup_win = tk.Toplevel(self)
+        setup_win.title("Setup Vault Password")
+        setup_win.geometry("350x250")
+        setup_win.transient(self)
+        setup_win.grab_set()
+
+        ttk.Label(setup_win, text="Create a secondary password to view credentials.", wraplength=300).pack(pady=10)
+        
+        ttk.Label(setup_win, text="New Secondary Password:").pack(pady=5)
+        pwd_entry = ttk.Entry(setup_win, show="*")
+        pwd_entry.pack(pady=5)
+        
+        ttk.Label(setup_win, text="Confirm Password:").pack(pady=5)
+        confirm_entry = ttk.Entry(setup_win, show="*")
+        confirm_entry.pack(pady=5)
+
+        def save_sec_pwd():
+            p1 = pwd_entry.get()
+            p2 = confirm_entry.get()
+            if p1 != p2:
+                messagebox.showerror("Error", "Passwords do not match.", parent=setup_win)
+                return
+            if p1 == self.current_master_pwd:
+                messagebox.showerror("Error", "Secondary password must be different from the Master Password.", parent=setup_win)
+                return
+            if not p1:
+                return
+
+            hashed = hashlib.sha256(p1.encode()).hexdigest()
+            self.manager.passwords["__vault_password_hash__"] = hashed
+            self.manager.save_passwords()
+            setup_win.destroy()
+            self.view_passwords()
+
+        ttk.Button(setup_win, text="Save & Continue", command=save_sec_pwd).pack(pady=15)
+
+    def verify_secondary_password(self):
+        verify_win = tk.Toplevel(self)
+        verify_win.title("Vault Authentication")
+        verify_win.geometry("300x150")
+        verify_win.transient(self)
+        verify_win.grab_set()
+
+        ttk.Label(verify_win, text="Enter Secondary Password:").pack(pady=10)
+        pwd_entry = ttk.Entry(verify_win, show="*")
+        pwd_entry.pack(pady=5)
+
+        def check_pwd():
+            p = pwd_entry.get()
+            hashed = hashlib.sha256(p.encode()).hexdigest()
+            if hashed == self.manager.passwords["__vault_password_hash__"]:
+                verify_win.destroy()
+                self.view_passwords()
+            else:
+                messagebox.showerror("Denied", "Incorrect Secondary Password", parent=verify_win)
+
+        ttk.Button(verify_win, text="Unlock Vault", command=check_pwd).pack(pady=10)
 
     def view_passwords(self):
         view_window = tk.Toplevel(self)
@@ -234,6 +290,8 @@ class App(tk.Tk):
         for item in tree.get_children():
             tree.delete(item)
         for site, data in self.manager.passwords.items():
+            if site == "__vault_password_hash__":
+                continue
             tree.insert("", tk.END, values=(site, data['username'], data['password']))
 
     def clear_window(self):
