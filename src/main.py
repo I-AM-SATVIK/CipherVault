@@ -9,6 +9,7 @@ import base64
 import hashlib
 from cryptography.fernet import Fernet, InvalidToken
 
+# Fix blurry text on Windows High-DPI displays
 try:
     import ctypes
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -79,6 +80,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("Cipher Vault")
         self.geometry("550x500")
+        self.resizable(False, False) # Locks the window size
         self.manager = PasswordManager()
         self.current_master_pwd = None
 
@@ -118,21 +120,27 @@ class App(tk.Tk):
 
         ttk.Label(self, text="🔒 Cipher Vault Dashboard", font=("SegoeUI", 18, "bold")).pack(pady=(20, 10))
 
+        # Visually Grouped Input Area
         input_frame = ttk.LabelFrame(self, text=" Save New Credential ", padding=(20, 10))
         input_frame.pack(pady=10, fill="x", padx=40)
 
-        ttk.Label(input_frame, text="Website / App:").grid(row=0, column=0, padx=5, pady=10, sticky="e")
-        self.site_entry = ttk.Entry(input_frame, width=35)
+        # Invisible container to perfectly center the inputs
+        inner_center_frame = ttk.Frame(input_frame)
+        inner_center_frame.pack(expand=True)
+
+        ttk.Label(inner_center_frame, text="Website / App:").grid(row=0, column=0, padx=5, pady=10, sticky="e")
+        self.site_entry = ttk.Entry(inner_center_frame, width=35)
         self.site_entry.grid(row=0, column=1, padx=5, pady=10)
 
-        ttk.Label(input_frame, text="Username / Email:").grid(row=1, column=0, padx=5, pady=10, sticky="e")
-        self.user_entry = ttk.Entry(input_frame, width=35)
+        ttk.Label(inner_center_frame, text="Username / Email:").grid(row=1, column=0, padx=5, pady=10, sticky="e")
+        self.user_entry = ttk.Entry(inner_center_frame, width=35)
         self.user_entry.grid(row=1, column=1, padx=5, pady=10)
 
-        ttk.Label(input_frame, text="Password:").grid(row=2, column=0, padx=5, pady=10, sticky="e")
-        self.pwd_entry = ttk.Entry(input_frame, width=35)
+        ttk.Label(inner_center_frame, text="Password:").grid(row=2, column=0, padx=5, pady=10, sticky="e")
+        self.pwd_entry = ttk.Entry(inner_center_frame, width=35)
         self.pwd_entry.grid(row=2, column=1, padx=5, pady=10)
 
+        # Buttons
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=15)
 
