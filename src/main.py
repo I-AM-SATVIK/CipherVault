@@ -43,8 +43,6 @@ class PasswordManager:
             decrypted_data = self.fernet.decrypt(encrypted_data)
             raw_data = json.loads(decrypted_data.decode())
             
-            # --- MIGRATION LOGIC ---
-            # Automatically upgrade old vault formats to the new composite key format
             self.passwords = {}
             needs_save = False
             for key, val in raw_data.items():
@@ -52,7 +50,6 @@ class PasswordManager:
                     self.passwords[key] = val
                 else:
                     if "actual_site" not in val:
-                        # Convert old format to new format
                         new_key = f"{key}_{val['username']}"
                         self.passwords[new_key] = {
                             "actual_site": key, 
@@ -63,7 +60,6 @@ class PasswordManager:
                     else:
                         self.passwords[key] = val
             
-            # If old data was migrated, save the updated structure to disk immediately
             if needs_save:
                 self.save_passwords()
                 
@@ -78,7 +74,6 @@ class PasswordManager:
             file.write(encrypted_data)
 
     def add_password(self, site, username, password):
-        # Create a unique key to prevent overwriting accounts from the same site
         unique_key = f"{site}_{username}"
         self.passwords[unique_key] = {"actual_site": site, "username": username, "password": password}
         self.save_passwords()
@@ -89,6 +84,17 @@ class PasswordManager:
             self.save_passwords()
             return True
         return False
+
+    def change_master_password(self, new_master_password):
+        # Derives a new key and immediately re-encrypts the in-memory dictionary
+        self.derive_key(new_master_password)
+        self.save_passwords()
+
+    def change_secondary_password(self, new_secondary_password):
+        # Rehashes the new password and overwrites the old hash
+        hashed = hashlib.sha256(new_secondary_password.encode()).hexdigest()
+        self.passwords["__vault_password_hash__"] = hashed
+        self.save_passwords()
 
     def generate_password(self, length=24):
         alphabet = string.ascii_letters + string.digits + string.punctuation
@@ -105,7 +111,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Cipher Vault")
-        self.geometry("550x500")
+        self.geometry("550x550")
         self.resizable(False, False)
         self.manager = PasswordManager()
         self.current_master_pwd = None
@@ -173,7 +179,8 @@ class App(tk.Tk):
         
         ttk.Separator(self, orient='horizontal').pack(fill='x', padx=40, pady=10)
         
-        ttk.Button(self, text="View & Manage Vault", command=self.view_passwords_auth).pack(pady=10)
+        ttk.Button(self, text="View & Manage Vault", command=self.view_passwords_auth).pack(pady=5)
+        ttk.Button(self, text="⚙️ Settings", command=self.open_settings).pack(pady=5)
 
     def ui_generate_password(self):
         self.pwd_entry.delete(0, tk.END)
@@ -250,9 +257,7 @@ class App(tk.Tk):
             if not p1:
                 return
 
-            hashed = hashlib.sha256(p1.encode()).hexdigest()
-            self.manager.passwords["__vault_password_hash__"] = hashed
-            self.manager.save_passwords()
+            self.manager.change_secondary_password(p1)
             setup_win.destroy()
             self.view_passwords()
 
@@ -306,7 +311,6 @@ class App(tk.Tk):
                 messagebox.showwarning("No Selection", "Please select a password to delete.", parent=view_window)
                 return
             
-            # Retrieve the unique hidden key to delete the correct entry
             unique_key = selected_item[0] 
             item_values = tree.item(unique_key, "values")
             site_to_delete = item_values[0]
@@ -325,8 +329,83 @@ class App(tk.Tk):
         for key, data in self.manager.passwords.items():
             if key == "__vault_password_hash__":
                 continue
-            # We attach the unique composite key invisibly using 'iid'
             tree.insert("", tk.END, iid=key, values=(data['actual_site'], data['username'], data['password']))
+
+    # --- SETTINGS MENU LOGIC ---
+    def open_settings(self):
+        settings_win = tk.Toplevel(self)
+        settings_win.title("Settings")
+        settings_win.geometry("400x500")
+        settings_win.transient(self)
+        settings_win.grab_set()
+
+        ttk.Label(settings_win, text="⚙️ Security Settings", font=("SegoeUI", 16, "bold")).pack(pady=15)
+
+        # Update Master Password Section
+        master_frame = ttk.LabelFrame(settings_win, text=" Change Master Password ", padding=15)
+        master_frame.pack(fill="x", padx=20, pady=10)
+
+        ttk.Label(master_frame, text="Current Master Password:").pack(anchor="w")
+        current_master_entry = ttk.Entry(master_frame, show="*")
+        current_master_entry.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(master_frame, text="New Master Password:").pack(anchor="w")
+        new_master_entry = ttk.Entry(master_frame, show="*")
+        new_master_entry.pack(fill="x", pady=(0, 10))
+
+        def update_master():
+            if current_master_entry.get() != self.current_master_pwd:
+                messagebox.showerror("Error", "Current Master Password is incorrect.", parent=settings_win)
+                return
+            new_pwd = new_master_entry.get()
+            if not new_pwd:
+                messagebox.showerror("Error", "New password cannot be empty.", parent=settings_win)
+                return
+            
+            self.manager.change_master_password(new_pwd)
+            self.current_master_pwd = new_pwd
+            messagebox.showinfo("Success", "Master Password successfully updated! The vault has been re-encrypted.", parent=settings_win)
+            current_master_entry.delete(0, tk.END)
+            new_master_entry.delete(0, tk.END)
+
+        ttk.Button(master_frame, text="Update Master Password", command=update_master).pack(pady=5)
+
+        # Update Secondary Password Section
+        sec_frame = ttk.LabelFrame(settings_win, text=" Change Vault Password ", padding=15)
+        sec_frame.pack(fill="x", padx=20, pady=10)
+
+        ttk.Label(sec_frame, text="Current Vault Password:").pack(anchor="w")
+        current_sec_entry = ttk.Entry(sec_frame, show="*")
+        current_sec_entry.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(sec_frame, text="New Vault Password:").pack(anchor="w")
+        new_sec_entry = ttk.Entry(sec_frame, show="*")
+        new_sec_entry.pack(fill="x", pady=(0, 10))
+
+        def update_secondary():
+            if "__vault_password_hash__" not in self.manager.passwords:
+                messagebox.showerror("Error", "Vault password not set up yet. Open the vault first.", parent=settings_win)
+                return
+            
+            hashed_current = hashlib.sha256(current_sec_entry.get().encode()).hexdigest()
+            if hashed_current != self.manager.passwords["__vault_password_hash__"]:
+                messagebox.showerror("Error", "Current Vault Password is incorrect.", parent=settings_win)
+                return
+                
+            new_pwd = new_sec_entry.get()
+            if not new_pwd:
+                messagebox.showerror("Error", "New password cannot be empty.", parent=settings_win)
+                return
+            if new_pwd == self.current_master_pwd:
+                messagebox.showerror("Error", "Secondary password must be different from the Master Password.", parent=settings_win)
+                return
+
+            self.manager.change_secondary_password(new_pwd)
+            messagebox.showinfo("Success", "Vault Password successfully updated!", parent=settings_win)
+            current_sec_entry.delete(0, tk.END)
+            new_sec_entry.delete(0, tk.END)
+
+        ttk.Button(sec_frame, text="Update Vault Password", command=update_secondary).pack(pady=5)
 
     def clear_window(self):
         for widget in self.winfo_children():
